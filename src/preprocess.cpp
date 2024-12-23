@@ -58,7 +58,11 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
   case VELO16:
     velodyne_handler(msg);
     break;
-  
+
+  case AVIA_PC:
+    avia_pc_handler(msg);
+    break;
+
   default:
     printf("Error LiDAR Type");
     break;
@@ -453,6 +457,38 @@ void Preprocess::velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
     }
 }
 
+void Preprocess::avia_pc_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
+{
+  pl_surf.clear();
+
+  pcl::PointCloud<livox_ros::Point> pl_orig;
+  pcl::fromROSMsg(*msg, pl_orig);
+  int plsize = pl_orig.size();
+  pl_surf.reserve(plsize);
+
+  for(uint i=1; i<plsize; i++)
+  {
+    if ((pl_orig.points[i].tag & 0x30) == 0x10 || (pl_orig.points[i].tag & 0x30) == 0x00)
+    {
+      double range = pl_orig.points[i].x * pl_orig.points[i].x + pl_orig.points[i].y * pl_orig.points[i].y + pl_orig.points[i].z * pl_orig.points[i].z;
+      if (range < (blind * blind)) continue;
+      PointType added_pt;
+      added_pt.x = pl_orig.points[i].x;
+      added_pt.y = pl_orig.points[i].y;
+      added_pt.z = pl_orig.points[i].z;
+      added_pt.intensity = pl_orig.points[i].intensity;
+      added_pt.normal_x = 0;
+      added_pt.normal_y = 0;
+      added_pt.normal_z = 0;
+      added_pt.curvature = (pl_orig.points[i].timestamp - pl_orig.points[0].timestamp) * 1.e-6f; // curvature unit: ms
+      pl_surf.push_back(added_pt);
+    }
+  
+  }
+  // ROS_INFO("last point timestamp % f", pl_orig.back().timestamp);
+  // ROS_INFO("last point curvature % f", pl_surf.back().curvature);
+
+}
 void Preprocess::give_feature(pcl::PointCloud<PointType> &pl, vector<orgtype> &types)
 {
   int plsize = pl.size();
